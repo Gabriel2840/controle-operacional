@@ -1,64 +1,75 @@
-# Controle Operacional — Aura 360 (PWA offline + Firebase)
+# Controle Operacional — Aura 360 (PWA offline + Supabase)
 
 App de registro diário da área de processo. **Funciona offline** (salva no
-aparelho sem internet) e **sincroniza sozinho ao reconectar**. Login obrigatório.
+aparelho sem internet) e **sincroniza ao reconectar**. Login obrigatório.
+Vários aparelhos veem os mesmos dados em tempo real.
 
-Telas: **Tanques** (% de reagente), **Bolas** (bags por diâmetro), **Floculante**
-(consumo), **GLP** (%), **Histórico**, **Gráfico** e **Cadastros**.
+> Base de dados: **Supabase** (você administra entrando com sua conta do **GitHub** — não precisa de Google).
 
 ```
 controle-operacional/
 ├── index.html            ← interface (visual Aura 360)
-├── app.js                ← lógica (login, navegação, Firestore offline, telas)
-├── firebase-config.js    ← VOCÊ preenche com os dados do seu Firebase
+├── app.js                ← lógica (login, telas, Supabase + camada offline)
+├── supabase-config.js    ← VOCÊ preenche com URL + chave anon do seu Supabase
+├── supabase-setup.sql    ← cria as tabelas + segurança (RLS) + realtime
 ├── manifest.webmanifest  ← deixa o app instalável
 ├── sw.js                 ← service worker (abre offline)
 ├── icon.svg              ← ícone
-├── firestore.rules       ← regras de segurança (colar no Firebase)
 └── SETUP.md              ← este guia
 ```
 
-## Passo 1 — Projeto no Firebase
-1. https://console.firebase.google.com → **Adicionar projeto** (ex.: `controle-operacional`).
+## Passo 1 — Criar o projeto no Supabase
+1. Acesse **https://supabase.com** → **Start your project** → entre com **GitHub**.
+2. **New project** → escolha a Organização, dê um nome (ex.: `controle-operacional`).
+3. Defina uma **Database Password** (guarde-a) e a região (ex.: São Paulo).
+4. Aguarde o projeto provisionar (~1-2 min).
 
-## Passo 2 — Firestore
-1. **Build > Firestore Database > Criar banco** → região `southamerica-east1` → modo produção.
+## Passo 2 — Criar as tabelas e a segurança
+1. Menu lateral **SQL Editor** → **New query**.
+2. Cole TODO o conteúdo de `supabase-setup.sql` → **Run**.
+3. Deve aparecer "Success". Isso cria as 7 tabelas, ativa as regras de
+   segurança (só logado acessa) e liga o tempo real.
 
-## Passo 3 — Login (Authentication)
-1. **Build > Authentication > Começar** → ative **E-mail/senha**.
-2. **Users > Adicionar usuário**: crie a conta da equipe (ex.: `equipe@processo.com` + senha forte).
-   Essa é a senha que a equipe usará para entrar.
+## Passo 3 — Criar o usuário (login da equipe)
+1. Menu **Authentication** → **Users** → **Add user** → **Create new user**.
+2. E-mail (ex.: `equipe@processo.com`) + senha forte.
+3. **Marque "Auto Confirm User"** (importante: senão o login pede confirmação por e-mail).
+4. Esse é o e-mail + senha que a equipe vai usar para entrar no app.
 
-## Passo 4 — Config do app Web
-1. **Configurações do projeto > Geral > Seus aplicativos > `</>` (Web)** → registrar.
-2. Copie o `firebaseConfig` e cole em `firebase-config.js` (substitua os `COLE_AQUI`).
+> Dica: em **Authentication > Providers > Email**, confirme que **Email** está
+> habilitado. Pode deixar "Confirm email" desligado para contas internas.
 
-## Passo 5 — Regras de segurança
-1. **Firestore Database > Regras** → cole o conteúdo de `firestore.rules` → **Publicar**.
+## Passo 4 — Pegar a configuração e colar no app
+1. Menu **Project Settings** (engrenagem) → **API** (ou **Data API**).
+2. Copie:
+   - **Project URL** → cole em `SUPABASE_URL` no `supabase-config.js`
+   - **anon public** (em Project API keys) → cole em `SUPABASE_ANON_KEY`
+3. ⚠️ **Nunca** use a chave **service_role** aqui (ela é secreta).
 
-## Passo 6 — Publicar (GitHub Pages)
-1. Crie um repositório (ex.: `controle-operacional`) **vazio** no GitHub.
-2. `git push` desta pasta para ele.
-3. **Settings > Pages > Source: Deploy from a branch → main** → salvar.
-4. Link final: `https://SEU-USUARIO.github.io/controle-operacional/`
+## Passo 5 — Publicar a alteração
+O app já está no GitHub Pages. Depois de preencher o `supabase-config.js`,
+basta enviar a mudança (eu posso fazer o push por você):
+```bash
+git add supabase-config.js
+git commit -m "Configura Supabase"
+git push
+```
+Em ~1 min o Pages atualiza. Recarregue o app e o login funciona.
 
-## Passo 7 — Autorizar domínio
-1. **Authentication > Settings > Authorized domains > Add domain** → `SEU-USUARIO.github.io`.
+Link do app: `https://gabriel2840.github.io/controle-operacional/`
 
 ---
 
-## Uso
-- Abra o link, **faça login**, e no celular use **"Adicionar à tela inicial"** para instalar.
-- A **barra de status** mostra 🟢 sincronizado / 🟠 offline / enviando pendências.
-- Registros feitos offline sobem sozinhos ao voltar a internet.
-
-## Sobre o erro "IndexedDB ... denied" que você viu no protótipo
-Aquilo acontece quando a página roda dentro de um **visualizador isolado**
-(sandbox) ou aba anônima — o navegador bloqueia o armazenamento local.
-**No app publicado (GitHub Pages), aberto numa aba normal ou instalado, o
-IndexedDB funciona** e o offline opera normalmente.
+## Como funciona o offline (importante)
+- **Cada aparelho precisa abrir o app conectado UMA vez** (para baixar o app e
+  fazer o primeiro login). Depois disso, funciona offline.
+- Offline: os registros ficam numa **fila local** e a barra de status mostra
+  quantos estão aguardando. Ao reconectar, sobem sozinhos.
+- Online: o que um aparelho registra aparece nos outros (Histórico/Gráfico) em
+  segundos, com o aviso "🔔 registro recebido de outro aparelho".
 
 ## Observações (compliance Aura)
 - Login é **conta compartilhada** — registra o e-mail comum, não a pessoa.
-  Dá para evoluir para login individual se precisar de auditoria.
-- São dados operacionais: confirme a classificação antes de divulgar o link amplamente.
+- São dados operacionais: confirme com a TI/governança onde os dados ficam
+  hospedados antes de tornar oficial. A chave `anon` é pública por design;
+  a proteção vem do login + RLS.

@@ -2,45 +2,57 @@
 //  Controle Operacional — Aura 360 (PWA offline-first)
 //  Telas: Tanques (%), Bolas (bags/diâmetro), Floculante,
 //         GLP (%), Histórico, Gráfico, Cadastros.
-//  Firestore com cache offline: registra sem internet e
-//  sincroniza sozinho ao reconectar. Login obrigatório.
+//  Base: Supabase (Postgres + Auth + Realtime). A camada offline
+//  é feita aqui (cache local + fila de envios no navegador):
+//  registra sem internet e sincroniza ao reconectar. Login obrigatório.
 // =============================================================
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {
-  getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import {
-  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { firebaseConfig } from "./firebase-config.js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase-config.js";
 
 // ---------- Init ----------
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+const supa = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true },
 });
 
-// Coleções
+// COL.x devolve o NOME da tabela (as telas chamam add(COL.x, ...) e _del('tabela', id)).
 const COL = {
-  tanques:     collection(db, "cad_tanques"),
-  diametros:   collection(db, "cad_diametros"),
-  floculantes: collection(db, "cad_floculantes"),
-  regTanques:  collection(db, "reg_tanques"),
-  regBolas:    collection(db, "reg_bolas"),
-  regFloc:     collection(db, "reg_floculante"),
-  regGLP:      collection(db, "reg_glp"),
+  tanques: "cad_tanques", diametros: "cad_diametros", floculantes: "cad_floculantes",
+  regTanques: "reg_tanques", regBolas: "reg_bolas", regFloc: "reg_floculante", regGLP: "reg_glp",
 };
+const TABELA_KEY = {
+  cad_tanques: "tanques", cad_diametros: "diametros", cad_floculantes: "floculantes",
+  reg_tanques: "regTanques", reg_bolas: "regBolas", reg_floculante: "regFloc", reg_glp: "regGLP",
+};
+const TABELAS = Object.keys(TABELA_KEY);
 
 // ---------- Estado ----------
 const state = {
   tanques: [], diametros: [], floculantes: [],
   regTanques: [], regBolas: [], regFloc: [], regGLP: [],
 };
-let lastMeta = null;
-const subs = [];
+let currentEmail = "—";
+let realtimeChan = null;
+const meusInserts = new Set(); // ids criados neste aparelho (p/ não notificar a si mesmo)
+
+// ---------- Cache local + fila de envios (offline) ----------
+// Supabase não tem offline embutido; guardamos no localStorage um CACHE por
+// tabela (ler offline / abrir rápido) e uma OUTBOX (gravações feitas sem rede).
+const LS_CACHE = (t) => `co_cache_${t}`;
+const LS_OUTBOX = "co_outbox";
+const jget = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const jset = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { console.warn("ls", e); } };
+const cacheGet = (t) => jget(LS_CACHE(t), []);
+const cacheSet = (t, rows) => jset(LS_CACHE(t), rows);
+const outboxGet = () => jget(LS_OUTBOX, []);
+const outboxSet = (q) => jset(LS_OUTBOX, q);
+const outboxAdd = (op) => { const q = outboxGet(); q.push(op); outboxSet(q); };
+
+function loadStateFromCache() {
+  for (const t of TABELAS) {
+    state[TABELA_KEY[t]] = cacheGet(t).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  }
+}
 
 // ---------- Helpers ----------
 const $ = (id) => document.getElementById(id);
@@ -65,83 +77,157 @@ function notifyNovo(tipo, n) {
 // ---------- Status de conexão ----------
 function setStatus(kind, text) { const b = $("status"); b.className = "status-bar " + kind; $("status-text").textContent = text; }
 function refreshStatus() {
-  if (!navigator.onLine) return setStatus("offline", "Sem conexão — salvando no aparelho; envia ao reconectar.");
-  if (lastMeta && lastMeta.hasPendingWrites) return setStatus("pending", "Conectado — enviando pendências…");
+  const pend = outboxGet().length;
+  if (!navigator.onLine) return setStatus("offline", `Sem conexão — salvando no aparelho${pend ? ` (${pend} na fila)` : ""}; envia ao reconectar.`);
+  if (pend) return setStatus("pending", `Conectado — enviando ${pend} pendência${pend > 1 ? "s" : ""}…`);
   setStatus("online", "Conectado e sincronizado.");
 }
-window.addEventListener("online", refreshStatus);
+window.addEventListener("online", () => { refreshStatus(); sincronizar(); });
 window.addEventListener("offline", refreshStatus);
 
-// ---------- Auth ----------
+// ---------- Auth (Supabase) ----------
 $("login-btn").addEventListener("click", doLogin);
 $("login-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
-$("logout-btn").addEventListener("click", () => signOut(auth));
+$("logout-btn").addEventListener("click", async () => { await supa.auth.signOut(); });
 
 async function doLogin() {
   const email = $("login-email").value.trim(), pass = $("login-pass").value;
   $("login-error").textContent = ""; $("login-btn").disabled = true;
-  try { await signInWithEmailAndPassword(auth, email, pass); }
-  catch (err) {
-    const m = {
-      "auth/invalid-credential": "E-mail ou senha incorretos.",
-      "auth/invalid-email": "E-mail inválido.",
-      "auth/network-request-failed": "Sem conexão para o primeiro login. Conecte-se uma vez para entrar.",
-      "auth/too-many-requests": "Muitas tentativas. Aguarde um momento.",
-    };
-    $("login-error").textContent = m[err.code] || ("Erro: " + err.code);
-  } finally { $("login-btn").disabled = false; }
+  if (!navigator.onLine) {
+    $("login-error").textContent = "Sem conexão para o primeiro login. Conecte-se uma vez para entrar.";
+    $("login-btn").disabled = false; return;
+  }
+  const { error } = await supa.auth.signInWithPassword({ email, password: pass });
+  if (error) {
+    $("login-error").textContent = /invalid login|credentials/i.test(error.message)
+      ? "E-mail ou senha incorretos." : ("Erro: " + error.message);
+  }
+  $("login-btn").disabled = false;
 }
 
-onAuthStateChanged(auth, (user) => {
-  if (user) {
+supa.auth.onAuthStateChange((_evt, session) => {
+  if (session?.user) {
+    currentEmail = session.user.email || "—";
     $("login").classList.add("hidden"); $("app").classList.remove("hidden");
-    startSubs(); refreshStatus(); if (!location.hash) location.hash = "#/"; render();
+    loadStateFromCache();
+    if (!location.hash) location.hash = "#/";
+    render(); refreshStatus();
+    iniciar(); // sincroniza + assina tempo real
   } else {
+    currentEmail = "—";
     $("app").classList.add("hidden"); $("login").classList.remove("hidden");
-    while (subs.length) (subs.pop())();
+    if (realtimeChan) { supa.removeChannel(realtimeChan); realtimeChan = null; }
   }
 });
 
-// ---------- Assinaturas em tempo real ----------
-function listen(col, key, ordered = true) {
-  const q = ordered ? query(col, orderBy("ts", "desc")) : col;
-  let inicial = true; // 1ª resposta = carga inicial; não conta como "novo"
-  return onSnapshot(q, (snap) => {
-    state[key] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    lastMeta = snap.metadata; refreshStatus();
+// ---------- Sincronização + tempo real ----------
+const reRenderSeLeitura = () => {
+  const r = route();
+  if (["/", "/historico", "/grafico", "/cadastros"].includes(r)) render();
+};
 
-    // Detecta documentos NOVOS confirmados no servidor (outro aparelho).
-    // Gravações deste aparelho chegam como "pendentes" e são ignoradas aqui.
-    if (!inicial && TIPO_NOME[key]) {
-      const novos = snap.docChanges().filter(
-        (c) => c.type === "added" && !c.doc.metadata.hasPendingWrites);
-      if (novos.length) notifyNovo(TIPO_NOME[key], novos.length);
-    }
-    inicial = false;
-
-    const r = route();
-    // Re-renderiza telas de leitura sem atrapalhar formulários abertos.
-    if (["/", "/historico", "/grafico", "/cadastros"].includes(r)) render();
-  }, (err) => { console.error(key, err); setStatus("pending", "Erro ao ler dados: " + err.code); });
-}
-function startSubs() {
-  if (subs.length) return;
-  subs.push(listen(COL.tanques, "tanques"));
-  subs.push(listen(COL.diametros, "diametros"));
-  subs.push(listen(COL.floculantes, "floculantes"));
-  subs.push(listen(COL.regTanques, "regTanques"));
-  subs.push(listen(COL.regBolas, "regBolas"));
-  subs.push(listen(COL.regFloc, "regFloc"));
-  subs.push(listen(COL.regGLP, "regGLP"));
+async function puxarTabela(t) {
+  const { data, error } = await supa.from(t).select("*").order("ts", { ascending: false });
+  if (error) { console.warn("fetch", t, error.message); return; }
+  cacheSet(t, data || []);
+  state[TABELA_KEY[t]] = data || [];
 }
 
-// ---------- Persistência (não-bloqueante p/ funcionar offline) ----------
-function add(col, obj) {
-  addDoc(col, { ...obj, ts: Date.now(), por: auth.currentUser?.email || "—" })
-    .catch((e) => console.error("save", e));
+async function flushOutbox() {
+  const q = outboxGet();
+  if (!q.length || !navigator.onLine) return;
+  const restantes = [];
+  for (const op of q) {
+    try {
+      if (op.op === "insert") {
+        const { error } = await supa.from(op.tabela).insert(op.row);
+        if (error && error.code !== "23505") throw error; // 23505 = já existe (ok)
+      } else if (op.op === "delete") {
+        const { error } = await supa.from(op.tabela).delete().eq("id", op.id);
+        if (error) throw error;
+      }
+    } catch (e) { console.warn("flush", e?.message || e); restantes.push(op); }
+  }
+  outboxSet(restantes);
 }
-function del(colName, id) { deleteDoc(doc(db, colName, id)).catch((e) => console.error("del", e)); }
-window._del = (colName, id, msg) => { if (confirm(msg || "Excluir este registro?")) del(colName, id); };
+
+async function sincronizar() {
+  if (!navigator.onLine) { refreshStatus(); return; }
+  await flushOutbox();
+  for (const t of TABELAS) await puxarTabela(t);
+  refreshStatus();
+  reRenderSeLeitura();
+}
+
+function assinarTempoReal() {
+  if (realtimeChan) return;
+  realtimeChan = supa.channel("co-realtime");
+  for (const t of TABELAS) {
+    realtimeChan.on("postgres_changes", { event: "*", schema: "public", table: t }, (payload) => {
+      const key = TABELA_KEY[t];
+      if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+        const row = payload.new;
+        state[key] = [row, ...state[key].filter((x) => x.id !== row.id)]
+          .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+        cacheSet(t, state[key]);
+        if (payload.eventType === "INSERT" && TIPO_NOME[key] && !meusInserts.has(row.id)) {
+          notifyNovo(TIPO_NOME[key], 1);
+        }
+      } else if (payload.eventType === "DELETE") {
+        state[key] = state[key].filter((x) => x.id !== payload.old.id);
+        cacheSet(t, state[key]);
+      }
+      reRenderSeLeitura();
+    });
+  }
+  realtimeChan.subscribe();
+}
+
+async function iniciar() {
+  await sincronizar();
+  assinarTempoReal();
+}
+
+// ---------- Gravação (otimista + fila offline) ----------
+function uuid() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0, v = c === "x" ? r : (r & 0x3) | 0x8; return v.toString(16);
+  });
+}
+
+function add(tabela, obj) {
+  const row = { ...obj, id: uuid(), ts: Date.now(), por: currentEmail };
+  const key = TABELA_KEY[tabela];
+  state[key] = [row, ...state[key]];          // aparece na hora (otimista)
+  cacheSet(tabela, state[key]);
+  meusInserts.add(row.id);
+  if (navigator.onLine) {
+    supa.from(tabela).insert(row).then(({ error }) => {
+      if (error && error.code !== "23505") { console.warn("insert", error.message); outboxAdd({ op: "insert", tabela, row }); }
+      refreshStatus();
+    });
+  } else {
+    outboxAdd({ op: "insert", tabela, row });
+  }
+  reRenderSeLeitura(); refreshStatus();
+}
+
+function del(tabela, id) {
+  const key = TABELA_KEY[tabela];
+  state[key] = state[key].filter((x) => x.id !== id);
+  cacheSet(tabela, state[key]);
+  if (navigator.onLine) {
+    supa.from(tabela).delete().eq("id", id).then(({ error }) => {
+      if (error) { console.warn("delete", error.message); outboxAdd({ op: "delete", tabela, id }); }
+      refreshStatus();
+    });
+  } else {
+    outboxAdd({ op: "delete", tabela, id });
+  }
+  reRenderSeLeitura(); refreshStatus();
+}
+window._del = (tabela, id, msg) => { if (confirm(msg || "Excluir este registro?")) del(tabela, id); };
 
 // ---------- Navegação ----------
 function route() { return (location.hash || "#/").slice(1) || "/"; }
@@ -313,7 +399,6 @@ function recent(key, colName, tipo) {
       key === "regTanques" ? `${esc(it.codigo)}: ${it.pct}%`
         : key === "regBolas" ? `${esc(it.diametro)}: ${it.qtdBags} bags`
           : `${esc(it.nome)}: ${it.qtd} ${esc(it.unidade)}`).join(" · ");
-    const pend = r.ts && lastMeta ? "" : "";
     return `<tr><td>${brDate(r.data)}</td><td>${resumo}</td>
       <td class="muted">${esc(r.por)}</td>
       <td><button class="btn danger btn-sm" onclick="_del('${colName}','${r.id}','Excluir este registro de ${tipo}?')">🗑</button></td></tr>`;
@@ -448,7 +533,7 @@ function viewCad() {
     <button class="btn btn-orange" id="c-dadd">Adicionar Diâmetro</button>
     <p class="hint">Os diâmetros cadastrados viram sugestões na tela de Bolas.</p>
     <table style="margin-top:12px"><tr><th>Diâmetro</th><th>Descrição</th><th></th></tr>
-      ${state.diametros.map(d => `<tr><td><b>${esc(d.valor)}</b></td><td>${esc(d.desc || "")}</td>
+      ${state.diametros.map(d => `<tr><td><b>${esc(d.valor)}</b></td><td>${esc(d.descricao || "")}</td>
         <td><button class="btn danger btn-sm" onclick="_del('cad_diametros','${d.id}','Excluir diâmetro ${esc(d.valor)}?')">🗑</button></td></tr>`).join("")
         || '<tr><td colspan="3" class="muted center">Nenhum diâmetro.</td></tr>'}
     </table>
@@ -473,9 +558,9 @@ function viewCad() {
     add(COL.tanques, { codigo, reagente }); toast("Tanque adicionado ✓");
   };
   $("c-dadd").onclick = () => {
-    const valor = $("c-diam").value.trim(), desc = $("c-ddesc").value.trim();
+    const valor = $("c-diam").value.trim(), descricao = $("c-ddesc").value.trim();
     if (!valor) return toast("Informe o diâmetro.");
-    add(COL.diametros, { valor, desc }); toast("Diâmetro adicionado ✓");
+    add(COL.diametros, { valor, descricao }); toast("Diâmetro adicionado ✓");
   };
   $("c-fadd").onclick = () => {
     const nome = $("c-fnome").value.trim(), unidade = $("c-funi").value.trim();
