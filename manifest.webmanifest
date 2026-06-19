@@ -1,0 +1,14 @@
+{
+  "name": "Controle Operacional — Aura 360",
+  "short_name": "Controle Op.",
+  "description": "Registro diário de tanques, bolas, floculante e GLP — área de processo.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#16243f",
+  "theme_color": "#16243f",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#16243f">
+  <title>Controle Operacional — Aura 360</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon.svg">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    :root{
+      --navy:#16243f; --navy2:#1a2b4a; --orange:#e8552d; --orange2:#ff6b35;
+      --teal:#2e9e8f; --bg:#eef1f6; --card:#ffffff; --line:#e0e5ec;
+      --txt:#1a3a52; --muted:#7b8794;
+    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,Verdana,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+
+    /* Topo */
+    .topbar{background:var(--navy);color:#fff;display:flex;align-items:center;gap:14px;
+      padding:12px 22px;border-bottom:3px solid var(--orange);position:sticky;top:0;z-index:50}
+    .brand{display:flex;align-items:center;gap:10px}
+    .logo-dot{width:34px;height:34px;border-radius:50%;border:3px solid var(--orange);
+      display:flex;align-items:center;justify-content:center}
+    .logo-dot span{width:12px;height:12px;border-radius:50%;background:var(--teal)}
+    .brand b{font-weight:800;letter-spacing:.5px}
+    .brand small{color:var(--orange2);font-size:11px;font-weight:700;display:block;line-height:1}
+    .sep{width:1px;height:34px;background:rgba(255,255,255,.25)}
+    .title-top b{font-size:15px}
+    .title-top small{display:block;color:#aab4c4;font-size:10px;letter-spacing:1px}
+    .topbar .spacer{flex:1}
+    .top-btn{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.3);
+      padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px}
+    .top-btn:hover{background:rgba(255,255,255,.22)}
+
+    /* Status conexão */
+    .status-bar{display:flex;align-items:center;gap:8px;padding:7px 22px;font-size:13px;font-weight:600}
+    .status-bar.online{background:#e6f7ee;color:#137a44}
+    .status-bar.offline{background:#fff4e5;color:#9a5b00}
+    .status-bar.pending{background:#fdecea;color:#a31515}
+    .status-dot{width:10px;height:10px;border-radius:50%;background:currentColor}
+
+    .wrap{max-width:1080px;margin:0 auto;padding:24px 18px 60px}
+    .page-title{display:flex;align-items:center;gap:10px;font-size:20px;margin-bottom:18px;color:var(--navy)}
+    .back{cursor:pointer;color:var(--orange);font-weight:700;font-size:14px}
+
+    /* Menu de cards */
+    .menu-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+    @media(max-width:680px){.menu-grid{grid-template-columns:1fr}}
+    .menu-card{background:var(--card);border-radius:14px;padding:34px 20px;text-align:center;
+      box-shadow:0 4px 18px rgba(20,40,80,.06);cursor:pointer;transition:.18s;border:1px solid #eef0f4}
+    .menu-card:hover{transform:translateY(-3px);box-shadow:0 10px 26px rgba(20,40,80,.12)}
+    .menu-card .ic{font-size:40px}
+    .menu-card h3{margin:12px 0 4px;color:var(--navy);font-size:18px}
+    .menu-card p{color:var(--muted);font-size:13px}
+
+    /* Cartões de conteúdo */
+    .card{background:var(--card);border-radius:12px;padding:20px;box-shadow:0 4px 18px rgba(20,40,80,.06);
+      margin-bottom:18px;border:1px solid #eef0f4}
+    .card h2{font-size:16px;color:var(--navy);margin-bottom:14px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:560px){.row{grid-template-columns:1fr}}
+    label{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bottom:5px}
+    input,select{width:100%;padding:10px;border:1px solid #d8dde6;border-radius:7px;font-size:14px;background:#fafbfc}
+    input:focus,select:focus{outline:none;border-color:var(--orange);background:#fff}
+    .btn{border:none;border-radius:7px;padding:10px 16px;font-weight:700;cursor:pointer;color:#fff;font-size:14px;margin-top:8px}
+    .btn-navy{background:var(--navy)} .btn-navy:hover{background:#23365c}
+    .btn-orange{background:var(--orange)} .btn-orange:hover{background:#cf471f}
+    .btn-teal{background:var(--teal)} .btn-teal:hover{background:#25867a}
+    .btn-ghost{background:#eef1f6;color:#445}
+    .btn-sm{padding:6px 10px;font-size:12px;margin:0}
+    .btn-block{width:100%}
+
+    table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+    th{background:var(--navy);color:#fff;padding:9px;text-align:left;font-weight:600}
+    td{padding:9px;border-bottom:1px solid #eceff3}
+    tr:hover td{background:#f6f8fc}
+    .pill{font-size:11px;padding:2px 8px;border-radius:10px;background:#fff3cd;color:#8a6100}
+    .danger{background:#dc3545} .danger:hover{background:#bd2130}
+    .muted{color:var(--muted)} .center{text-align:center}
+    .hidden{display:none!important}
+    .hint{font-size:12px;color:var(--muted);margin-top:4px}
+    .add-line{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+    .add-line>div{flex:1;min-width:120px}
+    .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--navy);
+      color:#fff;padding:12px 20px;border-radius:8px;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:200}
+
+    /* Login */
+    .login-overlay{position:fixed;inset:0;background:linear-gradient(135deg,var(--navy),#0f1830);
+      display:flex;align-items:center;justify-content:center;z-index:1000}
+    .login-card{background:#fff;padding:36px;border-radius:14px;width:350px;max-width:90vw;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+    .login-card .lg{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+    .login-card h1{font-size:18px;color:var(--navy)}
+    .login-card .lg small{color:var(--orange2);font-weight:700;font-size:11px}
+    .login-error{color:#dc3545;font-size:13px;margin-top:10px;min-height:18px}
+  </style>
+</head>
+<body>
+  <!-- Login -->
+  <div id="login" class="login-overlay">
+    <div class="login-card">
+      <div class="lg">
+        <div class="logo-dot"><span></span></div>
+        <div><h1>Controle Operacional</h1><small>AURA 360 · ÁREA DE PROCESSO</small></div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label>E-mail de acesso</label>
+        <input type="email" id="login-email" autocomplete="username" placeholder="equipe@processo">
+      </div>
+      <div style="margin-bottom:6px">
+        <label>Senha</label>
+        <input type="password" id="login-pass" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <button class="btn btn-orange btn-block" id="login-btn">Entrar</button>
+      <div class="login-error" id="login-error"></div>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app" class="hidden">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo-dot"><span></span></div>
+        <div><b>AURA <span style="color:var(--orange2)">360</span></b><small>MINERALS</small></div>
+      </div>
+      <div class="sep"></div>
+      <div class="title-top"><b>Controle Operacional</b><small>ÁREA DE PROCESSO</small></div>
+      <div class="spacer"></div>
+      <button class="top-btn" id="logout-btn">Sair</button>
+    </div>
+
+    <div id="status" class="status-bar online">
+      <span class="status-dot"></span><span id="status-text">Conectado</span>
+    </div>
+
+    <div class="wrap">
+      <!-- as telas são renderizadas aqui pelo app.js -->
+      <div id="screen"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+rules_version = '2';
+
+// Regras de segurança — Controle Operacional (Aura 360)
+// O app é público (link), mas SÓ quem estiver autenticado lê ou grava.
+// Cole em: Firebase Console > Firestore Database > Regras > Publicar.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{col}/{id} {
+      allow read, write: if request.auth != null
+        && col in [
+          'cad_tanques', 'cad_diametros', 'cad_floculantes',
+          'reg_tanques', 'reg_bolas', 'reg_floculante', 'reg_glp'
+        ];
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

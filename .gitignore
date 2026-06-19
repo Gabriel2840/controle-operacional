@@ -1,0 +1,10 @@
+# Windows / OneDrive
+desktop.ini
+Thumbs.db
+$RECYCLE.BIN/
+# Editores
+.vscode/
+.idea/
+*.swp
+# Sistema
+.DS_Store
