@@ -51,9 +51,15 @@ const todayISO = () => { const d = new Date(); const o = d.getTimezoneOffset(); 
 const brDate = (iso) => { if (!iso) return "—"; const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
 const num = (v) => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
 
-function toast(msg) {
+function toast(msg, ms = 2600) {
   const t = $("toast"); t.textContent = msg; t.classList.remove("hidden");
-  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add("hidden"), 2600);
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add("hidden"), ms);
+}
+
+// Aviso quando chega registro gravado por OUTRO aparelho.
+const TIPO_NOME = { regTanques: "Tanques", regBolas: "Bolas", regFloc: "Floculante", regGLP: "GLP" };
+function notifyNovo(tipo, n) {
+  toast(`🔔 ${n} registro${n > 1 ? "s" : ""} de ${tipo} recebido${n > 1 ? "s" : ""} de outro aparelho`, 4200);
 }
 
 // ---------- Status de conexão ----------
@@ -99,9 +105,20 @@ onAuthStateChanged(auth, (user) => {
 // ---------- Assinaturas em tempo real ----------
 function listen(col, key, ordered = true) {
   const q = ordered ? query(col, orderBy("ts", "desc")) : col;
+  let inicial = true; // 1ª resposta = carga inicial; não conta como "novo"
   return onSnapshot(q, (snap) => {
     state[key] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     lastMeta = snap.metadata; refreshStatus();
+
+    // Detecta documentos NOVOS confirmados no servidor (outro aparelho).
+    // Gravações deste aparelho chegam como "pendentes" e são ignoradas aqui.
+    if (!inicial && TIPO_NOME[key]) {
+      const novos = snap.docChanges().filter(
+        (c) => c.type === "added" && !c.doc.metadata.hasPendingWrites);
+      if (novos.length) notifyNovo(TIPO_NOME[key], novos.length);
+    }
+    inicial = false;
+
     const r = route();
     // Re-renderiza telas de leitura sem atrapalhar formulários abertos.
     if (["/", "/historico", "/grafico", "/cadastros"].includes(r)) render();
