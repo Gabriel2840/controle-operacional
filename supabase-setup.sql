@@ -50,3 +50,14 @@ begin
     end;
   end loop;
 end $$;
+
+-- Garante que a Data API (PostgREST) enxergue as tabelas. A segurança real
+-- continua no RLS acima (sem login, ninguém lê nem grava).
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on
+  cad_tanques, cad_diametros, cad_floculantes,
+  reg_tanques, reg_bolas, reg_floculante, reg_glp
+  to authenticated;
+
+-- Pede ao PostgREST para recarregar o cache de schema.
+notify pgrst, 'reload schema';
