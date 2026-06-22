@@ -351,12 +351,12 @@ function viewFloc() {
   screen().innerHTML = h + `<div class="card">
     <h2>Quantidade consumida no dia</h2>
     <div style="max-width:240px"><label>Data</label><input type="date" id="f-data" value="${todayISO()}"></div>
-    <table style="margin-top:12px"><tr><th>Floculante</th><th>Consumo do dia</th><th>Unidade</th><th>Disponibilidade</th></tr>
+    <table style="margin-top:12px"><tr><th>Floculante</th><th>Consumo do dia</th><th>Unidade</th><th>Sacos disponíveis</th></tr>
       ${state.floculantes.map((f, i) => `<tr>
         <td><b>${esc(f.nome)}</b></td>
         <td style="max-width:140px"><input type="number" min="0" step="0.01" id="f-q-${i}" placeholder="0"></td>
         <td style="max-width:110px"><select id="f-u-${i}">
-          ${["KG", "L", "M³", "UND"].map(u => `<option value="${u}"${f.unidade === u ? " selected" : ""}>${u}</option>`).join("")}
+          ${["KG", "UND"].map(u => `<option value="${u}"${f.unidade === u ? " selected" : ""}>${u}</option>`).join("")}
         </select></td>
         <td style="max-width:140px"><input type="number" min="0" step="0.01" id="f-d-${i}" placeholder="0"></td></tr>`).join("")}
     </table>
@@ -406,7 +406,7 @@ function recent(key, colName, tipo) {
     else resumo = (r.itens || []).map(it =>
       key === "regTanques" ? `${esc(it.codigo)}: ${it.pct}%`
         : key === "regBolas" ? `${esc(it.diametro)}: ${it.qtdBags} bags${it.peso ? ` × ${it.peso}kg` : ""}`
-          : `${esc(it.nome)}: ${it.qtd} ${esc(it.unidade)}${it.disp != null ? ` · disp ${it.disp}` : ""}`).join(" · ");
+          : `${esc(it.nome)}: ${it.qtd} ${esc(it.unidade)}${it.disp != null ? ` · ${it.disp} sacos disp.` : ""}`).join(" · ");
     return `<tr><td>${brDate(r.data)}</td><td>${resumo}</td>
       <td class="muted">${esc(r.por)}</td>
       <td><button class="btn danger btn-sm" onclick="_del('${colName}','${r.id}','Excluir este registro de ${tipo}?')">🗑</button></td></tr>`;
@@ -428,7 +428,7 @@ function viewHist() {
   const resumo = (r) => r._t === "GLP" ? `${r.pct}%`
     : (r.itens || []).map(it => r._t === "Tanques" ? `${esc(it.codigo)} ${it.pct}%`
       : r._t === "Bolas" ? `${esc(it.diametro)}: ${it.qtdBags} bags${it.peso ? ` × ${it.peso}kg` : ""}`
-        : `${esc(it.nome)} ${it.qtd}${esc(it.unidade)}${it.disp != null ? ` (disp ${it.disp})` : ""}`).join(" · ");
+        : `${esc(it.nome)} ${it.qtd}${esc(it.unidade)}${it.disp != null ? ` (${it.disp} sacos)` : ""}`).join(" · ");
 
   screen().innerHTML = h + `<div class="card">
     <div class="row" style="grid-template-columns:1fr auto">
@@ -464,7 +464,7 @@ function viewGraf() {
         <option value="tanques">Tanques (%)</option>
         <option value="glp">GLP (%)</option>
         <option value="floc">Floculante (consumo)</option>
-        <option value="flocdisp">Floculante (disponibilidade)</option>
+        <option value="flocdisp">Floculante (sacos disponíveis)</option>
         <option value="bolas">Bolas (bags por diâmetro)</option>
         <option value="bolaskg">Bolas (kg por dia)</option>
       </select>
@@ -494,7 +494,7 @@ function drawChart(tipo) {
       data: regs.map(r => { const it = (r.itens || []).find(x => x.codigo === cod); return it ? it.pct : null; }),
     }));
   } else if (tipo === "flocdisp") {
-    yTitle = "disponibilidade";
+    yTitle = "sacos disponíveis";
     const regs = [...state.regFloc].sort((a, b) => (a.ts || 0) - (b.ts || 0));
     labels = regs.map(r => brDate(r.data));
     const nomes = [...new Set(regs.flatMap(r => (r.itens || []).map(i => i.nome)))];
