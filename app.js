@@ -353,22 +353,38 @@ function viewFloc() {
     <div style="max-width:240px"><label>Data</label><input type="date" id="f-data" value="${todayISO()}"></div>
     <table style="margin-top:12px"><tr><th>Floculante</th><th>Consumo do dia</th><th>Unidade</th><th>Sacos disponíveis</th></tr>
       ${state.floculantes.map((f, i) => `<tr>
-        <td><b>${esc(f.nome)}</b></td>
-        <td style="max-width:140px"><input type="number" min="0" step="0.01" id="f-q-${i}" placeholder="0"></td>
+        <td><b>${esc(f.nome)}</b>${f.pesoSaco ? `<br><small class="muted">${f.pesoSaco} kg/saco</small>` : ""}</td>
+        <td style="max-width:170px"><input type="number" min="0" step="0.01" id="f-q-${i}" placeholder="0">
+          <div class="hint" id="f-eq-${i}"></div></td>
         <td style="max-width:110px"><select id="f-u-${i}">
           ${["KG", "UND"].map(u => `<option value="${u}"${f.unidade === u ? " selected" : ""}>${u}</option>`).join("")}
         </select></td>
-        <td style="max-width:140px"><input type="number" min="0" step="0.01" id="f-d-${i}" placeholder="0"></td></tr>`).join("")}
+        <td style="max-width:170px"><input type="number" min="0" step="0.01" id="f-d-${i}" placeholder="0">
+          <div class="hint" id="f-eqd-${i}"></div></td></tr>`).join("")}
     </table>
     <button class="btn btn-navy btn-block" id="f-save">💾 Salvar consumo</button>
   </div>` + recent("regFloc", "reg_floculante", "Floculante");
+
+  // Conversão automática kg ↔ sacos (quando o floculante tem peso por saco).
+  state.floculantes.forEach((f, i) => {
+    const ps = num(f.pesoSaco);
+    const upd = () => {
+      const q = num($(`f-q-${i}`).value), u = $(`f-u-${i}`).value, d = num($(`f-d-${i}`).value);
+      $(`f-eq-${i}`).textContent = (ps > 0 && q > 0)
+        ? (u === "KG" ? `≈ ${(q / ps).toFixed(1)} sacos` : `≈ ${(q * ps).toFixed(1)} kg`) : "";
+      $(`f-eqd-${i}`).textContent = (ps > 0 && d > 0) ? `≈ ${(d * ps).toFixed(1)} kg` : "";
+    };
+    $(`f-q-${i}`).addEventListener("input", upd);
+    $(`f-u-${i}`).addEventListener("change", upd);
+    $(`f-d-${i}`).addEventListener("input", upd);
+  });
 
   $("f-save").onclick = () => {
     const data = $("f-data").value || todayISO();
     const itens = state.floculantes.map((f, i) => {
       const q = $(`f-q-${i}`).value, d = $(`f-d-${i}`).value;
-      return { nome: f.nome, unidade: $(`f-u-${i}`).value, qtd: num(q), disp: num(d), vazio: q === "" && d === "" };
-    }).filter(x => !x.vazio).map(({ nome, unidade, qtd, disp }) => ({ nome, unidade, qtd, disp }));
+      return { nome: f.nome, unidade: $(`f-u-${i}`).value, qtd: num(q), disp: num(d), pesoSaco: num(f.pesoSaco), vazio: q === "" && d === "" };
+    }).filter(x => !x.vazio).map(({ nome, unidade, qtd, disp, pesoSaco }) => ({ nome, unidade, qtd, disp, pesoSaco }));
     if (!itens.length) return toast("Preencha ao menos um consumo ou disponibilidade.");
     add(COL.regFloc, { data, itens });
     toast("Consumo salvo ✓"); go("/");
@@ -586,13 +602,20 @@ function viewCad() {
   <div class="card"><h2>Cadastrar Floculante</h2>
     <div class="row">
       <div><label>Nome</label><input id="c-fnome" placeholder="Ex: Magnafloc 10"></div>
-      <div><label>Unidade padrão</label><input id="c-funi" placeholder="Ex: kg"></div>
+      <div><label>Unidade padrão</label>
+        <select id="c-funi">${["KG", "UND"].map(u => `<option value="${u}">${u}</option>`).join("")}</select></div>
+    </div>
+    <div class="row">
+      <div><label>Peso por saco (kg) — opcional</label><input type="number" min="0" step="0.01" id="c-fpeso" placeholder="Ex: 25"></div>
+      <div></div>
     </div>
     <button class="btn btn-teal" id="c-fadd">Adicionar Floculante</button>
-    <table style="margin-top:12px"><tr><th>Nome</th><th>Unidade</th><th></th></tr>
+    <p class="hint">O peso por saco permite o app converter automaticamente kg ↔ sacos na hora do registro.</p>
+    <table style="margin-top:12px"><tr><th>Nome</th><th>Unidade</th><th>Peso/saco</th><th></th></tr>
       ${state.floculantes.map(f => `<tr><td><b>${esc(f.nome)}</b></td><td>${esc(f.unidade)}</td>
+        <td>${f.pesoSaco ? esc(f.pesoSaco) + " kg" : "—"}</td>
         <td><button class="btn danger btn-sm" onclick="_del('cad_floculantes','${f.id}','Excluir floculante ${esc(f.nome)}?')">🗑</button></td></tr>`).join("")
-        || '<tr><td colspan="3" class="muted center">Nenhum floculante.</td></tr>'}
+        || '<tr><td colspan="4" class="muted center">Nenhum floculante.</td></tr>'}
     </table>
   </div>`;
 
@@ -607,9 +630,9 @@ function viewCad() {
     add(COL.diametros, { valor, descricao }); toast("Diâmetro adicionado ✓");
   };
   $("c-fadd").onclick = () => {
-    const nome = $("c-fnome").value.trim(), unidade = $("c-funi").value.trim();
+    const nome = $("c-fnome").value.trim(), unidade = $("c-funi").value, pesoSaco = num($("c-fpeso").value);
     if (!nome) return toast("Informe o nome do floculante.");
-    add(COL.floculantes, { nome, unidade }); toast("Floculante adicionado ✓");
+    add(COL.floculantes, { nome, unidade, pesoSaco }); toast("Floculante adicionado ✓");
   };
 }
 
