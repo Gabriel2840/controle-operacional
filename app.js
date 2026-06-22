@@ -305,7 +305,7 @@ function viewBolas() {
   screen().innerHTML = h + `<div class="card">
     <h2>Contagem de bags por diâmetro</h2>
     <div style="max-width:240px"><label>Data</label><input type="date" id="b-data" value="${todayISO()}"></div>
-    <p class="hint">Adicione uma linha por diâmetro. Digite o diâmetro e a quantidade de bags.</p>
+    <p class="hint">Adicione uma linha por diâmetro: diâmetro, quantidade de bags e o peso da bag (kg).</p>
     <datalist id="dl-diam">${sugest}</datalist>
     <div id="b-lines"></div>
     <button class="btn btn-ghost btn-sm" id="b-add">+ Adicionar linha</button>
@@ -313,12 +313,13 @@ function viewBolas() {
   </div>` + recent("regBolas", "reg_bolas", "Bolas");
 
   const lines = $("b-lines");
-  const addLine = (diam = "", qtd = "") => {
+  const addLine = (diam = "", qtd = "", peso = "") => {
     const div = document.createElement("div");
     div.className = "add-line";
     div.innerHTML = `
       <div><label>Diâmetro das bolas</label><input list="dl-diam" class="b-diam" placeholder='ex.: 5"' value="${esc(diam)}"></div>
       <div><label>Quantidade de bags</label><input type="number" min="0" step="1" class="b-qtd" placeholder="0" value="${esc(qtd)}"></div>
+      <div><label>Peso da bag (kg)</label><input type="number" min="0" step="0.01" class="b-peso" placeholder="0" value="${esc(peso)}"></div>
       <button class="btn danger btn-sm" title="remover">×</button>`;
     div.querySelector("button").onclick = () => div.remove();
     lines.appendChild(div);
@@ -331,6 +332,7 @@ function viewBolas() {
     const itens = [...lines.querySelectorAll(".add-line")].map(d => ({
       diametro: d.querySelector(".b-diam").value.trim(),
       qtdBags: num(d.querySelector(".b-qtd").value),
+      peso: num(d.querySelector(".b-peso").value),
     })).filter(x => x.diametro && x.qtdBags > 0);
     if (!itens.length) return toast("Adicione ao menos um diâmetro com quantidade.");
     add(COL.regBolas, { data, itens });
@@ -349,18 +351,23 @@ function viewFloc() {
   screen().innerHTML = h + `<div class="card">
     <h2>Quantidade consumida no dia</h2>
     <div style="max-width:240px"><label>Data</label><input type="date" id="f-data" value="${todayISO()}"></div>
-    <table style="margin-top:12px"><tr><th>Floculante</th><th>Unidade</th><th>Consumo</th></tr>
+    <table style="margin-top:12px"><tr><th>Floculante</th><th>Consumo do dia</th><th>Unidade</th></tr>
       ${state.floculantes.map((f, i) => `<tr>
-        <td><b>${esc(f.nome)}</b></td><td>${esc(f.unidade)}</td>
-        <td style="max-width:140px"><input type="number" min="0" step="0.01" id="f-q-${i}" placeholder="0"></td></tr>`).join("")}
+        <td><b>${esc(f.nome)}</b></td>
+        <td style="max-width:140px"><input type="number" min="0" step="0.01" id="f-q-${i}" placeholder="0"></td>
+        <td style="max-width:110px"><select id="f-u-${i}">
+          ${["kg", "L", "m³"].map(u => `<option value="${u}"${f.unidade === u ? " selected" : ""}>${u}</option>`).join("")}
+        </select></td></tr>`).join("")}
     </table>
     <button class="btn btn-navy btn-block" id="f-save">💾 Salvar consumo</button>
   </div>` + recent("regFloc", "reg_floculante", "Floculante");
 
   $("f-save").onclick = () => {
     const data = $("f-data").value || todayISO();
-    const itens = state.floculantes.map((f, i) => ({ nome: f.nome, unidade: f.unidade, qtd: num($(`f-q-${i}`).value), vazio: $(`f-q-${i}`).value === "" }))
-      .filter(x => !x.vazio).map(({ nome, unidade, qtd }) => ({ nome, unidade, qtd }));
+    const itens = state.floculantes.map((f, i) => ({
+      nome: f.nome, unidade: $(`f-u-${i}`).value, qtd: num($(`f-q-${i}`).value),
+      vazio: $(`f-q-${i}`).value === "",
+    })).filter(x => !x.vazio).map(({ nome, unidade, qtd }) => ({ nome, unidade, qtd }));
     if (!itens.length) return toast("Preencha ao menos um consumo.");
     add(COL.regFloc, { data, itens });
     toast("Consumo salvo ✓"); go("/");
@@ -397,7 +404,7 @@ function recent(key, colName, tipo) {
     if (key === "regGLP") resumo = `${r.pct}%`;
     else resumo = (r.itens || []).map(it =>
       key === "regTanques" ? `${esc(it.codigo)}: ${it.pct}%`
-        : key === "regBolas" ? `${esc(it.diametro)}: ${it.qtdBags} bags`
+        : key === "regBolas" ? `${esc(it.diametro)}: ${it.qtdBags} bags${it.peso ? ` × ${it.peso}kg` : ""}`
           : `${esc(it.nome)}: ${it.qtd} ${esc(it.unidade)}`).join(" · ");
     return `<tr><td>${brDate(r.data)}</td><td>${resumo}</td>
       <td class="muted">${esc(r.por)}</td>
@@ -419,7 +426,7 @@ function viewHist() {
 
   const resumo = (r) => r._t === "GLP" ? `${r.pct}%`
     : (r.itens || []).map(it => r._t === "Tanques" ? `${esc(it.codigo)} ${it.pct}%`
-      : r._t === "Bolas" ? `${esc(it.diametro)}: ${it.qtdBags} bags`
+      : r._t === "Bolas" ? `${esc(it.diametro)}: ${it.qtdBags} bags${it.peso ? ` × ${it.peso}kg` : ""}`
         : `${esc(it.nome)} ${it.qtd}${esc(it.unidade)}`).join(" · ");
 
   screen().innerHTML = h + `<div class="card">
@@ -452,10 +459,12 @@ function viewGraf() {
   screen().innerHTML = h + `<div class="card">
     <div class="row" style="grid-template-columns:1fr auto">
       <h2>Níveis ao longo dos dias</h2>
-      <select id="gsel" style="max-width:220px">
+      <select id="gsel" style="max-width:240px">
         <option value="tanques">Tanques (%)</option>
         <option value="glp">GLP (%)</option>
         <option value="floc">Floculante (consumo)</option>
+        <option value="bolas">Bolas (bags por diâmetro)</option>
+        <option value="bolaskg">Bolas (kg por dia)</option>
       </select>
     </div>
     <div style="height:380px;position:relative"><canvas id="gcanvas"></canvas></div>
@@ -482,6 +491,28 @@ function drawChart(tipo) {
       tension: .3, borderWidth: 2, spanGaps: true,
       data: regs.map(r => { const it = (r.itens || []).find(x => x.codigo === cod); return it ? it.pct : null; }),
     }));
+  } else if (tipo === "bolas") {
+    yTitle = "bags";
+    const regs = [...state.regBolas].sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    labels = regs.map(r => brDate(r.data));
+    const diams = [...new Set(regs.flatMap(r => (r.itens || []).map(i => i.diametro)))];
+    datasets = diams.map((dm, i) => ({
+      label: dm, borderColor: cores[i % cores.length], backgroundColor: cores[i % cores.length],
+      tension: .3, borderWidth: 2, spanGaps: true,
+      data: regs.map(r => {
+        const its = (r.itens || []).filter(x => x.diametro === dm);
+        return its.length ? its.reduce((s, x) => s + (x.qtdBags || 0), 0) : null;
+      }),
+    }));
+  } else if (tipo === "bolaskg") {
+    yTitle = "kg";
+    const regs = [...state.regBolas].sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    labels = regs.map(r => brDate(r.data));
+    datasets = [{
+      label: "Peso total (kg/dia)", borderColor: cores[0], backgroundColor: cores[0],
+      tension: .3, borderWidth: 2,
+      data: regs.map(r => (r.itens || []).reduce((s, x) => s + (x.qtdBags || 0) * (x.peso || 0), 0)),
+    }];
   } else {
     yTitle = "consumo";
     const regs = [...state.regFloc].sort((a, b) => (a.ts || 0) - (b.ts || 0));
@@ -503,7 +534,7 @@ function drawChart(tipo) {
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { position: "top" } },
-      scales: { y: { beginAtZero: true, title: { display: true, text: yTitle }, ...(tipo !== "floc" ? { max: 100 } : {}) } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: yTitle }, ...((tipo === "tanques" || tipo === "glp") ? { max: 100 } : {}) } },
     },
   });
 }
