@@ -351,24 +351,25 @@ function viewFloc() {
   screen().innerHTML = h + `<div class="card">
     <h2>Quantidade consumida no dia</h2>
     <div style="max-width:240px"><label>Data</label><input type="date" id="f-data" value="${todayISO()}"></div>
-    <table style="margin-top:12px"><tr><th>Floculante</th><th>Consumo do dia</th><th>Unidade</th></tr>
+    <table style="margin-top:12px"><tr><th>Floculante</th><th>Consumo do dia</th><th>Unidade</th><th>Disponibilidade</th></tr>
       ${state.floculantes.map((f, i) => `<tr>
         <td><b>${esc(f.nome)}</b></td>
         <td style="max-width:140px"><input type="number" min="0" step="0.01" id="f-q-${i}" placeholder="0"></td>
         <td style="max-width:110px"><select id="f-u-${i}">
-          ${["kg", "L", "m³"].map(u => `<option value="${u}"${f.unidade === u ? " selected" : ""}>${u}</option>`).join("")}
-        </select></td></tr>`).join("")}
+          ${["kg", "L", "m³", "UND"].map(u => `<option value="${u}"${f.unidade === u ? " selected" : ""}>${u}</option>`).join("")}
+        </select></td>
+        <td style="max-width:140px"><input type="number" min="0" step="0.01" id="f-d-${i}" placeholder="0"></td></tr>`).join("")}
     </table>
     <button class="btn btn-navy btn-block" id="f-save">💾 Salvar consumo</button>
   </div>` + recent("regFloc", "reg_floculante", "Floculante");
 
   $("f-save").onclick = () => {
     const data = $("f-data").value || todayISO();
-    const itens = state.floculantes.map((f, i) => ({
-      nome: f.nome, unidade: $(`f-u-${i}`).value, qtd: num($(`f-q-${i}`).value),
-      vazio: $(`f-q-${i}`).value === "",
-    })).filter(x => !x.vazio).map(({ nome, unidade, qtd }) => ({ nome, unidade, qtd }));
-    if (!itens.length) return toast("Preencha ao menos um consumo.");
+    const itens = state.floculantes.map((f, i) => {
+      const q = $(`f-q-${i}`).value, d = $(`f-d-${i}`).value;
+      return { nome: f.nome, unidade: $(`f-u-${i}`).value, qtd: num(q), disp: num(d), vazio: q === "" && d === "" };
+    }).filter(x => !x.vazio).map(({ nome, unidade, qtd, disp }) => ({ nome, unidade, qtd, disp }));
+    if (!itens.length) return toast("Preencha ao menos um consumo ou disponibilidade.");
     add(COL.regFloc, { data, itens });
     toast("Consumo salvo ✓"); go("/");
   };
@@ -405,7 +406,7 @@ function recent(key, colName, tipo) {
     else resumo = (r.itens || []).map(it =>
       key === "regTanques" ? `${esc(it.codigo)}: ${it.pct}%`
         : key === "regBolas" ? `${esc(it.diametro)}: ${it.qtdBags} bags${it.peso ? ` × ${it.peso}kg` : ""}`
-          : `${esc(it.nome)}: ${it.qtd} ${esc(it.unidade)}`).join(" · ");
+          : `${esc(it.nome)}: ${it.qtd} ${esc(it.unidade)}${it.disp != null ? ` · disp ${it.disp}` : ""}`).join(" · ");
     return `<tr><td>${brDate(r.data)}</td><td>${resumo}</td>
       <td class="muted">${esc(r.por)}</td>
       <td><button class="btn danger btn-sm" onclick="_del('${colName}','${r.id}','Excluir este registro de ${tipo}?')">🗑</button></td></tr>`;
@@ -427,7 +428,7 @@ function viewHist() {
   const resumo = (r) => r._t === "GLP" ? `${r.pct}%`
     : (r.itens || []).map(it => r._t === "Tanques" ? `${esc(it.codigo)} ${it.pct}%`
       : r._t === "Bolas" ? `${esc(it.diametro)}: ${it.qtdBags} bags${it.peso ? ` × ${it.peso}kg` : ""}`
-        : `${esc(it.nome)} ${it.qtd}${esc(it.unidade)}`).join(" · ");
+        : `${esc(it.nome)} ${it.qtd}${esc(it.unidade)}${it.disp != null ? ` (disp ${it.disp})` : ""}`).join(" · ");
 
   screen().innerHTML = h + `<div class="card">
     <div class="row" style="grid-template-columns:1fr auto">
@@ -463,6 +464,7 @@ function viewGraf() {
         <option value="tanques">Tanques (%)</option>
         <option value="glp">GLP (%)</option>
         <option value="floc">Floculante (consumo)</option>
+        <option value="flocdisp">Floculante (disponibilidade)</option>
         <option value="bolas">Bolas (bags por diâmetro)</option>
         <option value="bolaskg">Bolas (kg por dia)</option>
       </select>
@@ -490,6 +492,16 @@ function drawChart(tipo) {
       label: cod, borderColor: cores[i % cores.length], backgroundColor: cores[i % cores.length],
       tension: .3, borderWidth: 2, spanGaps: true,
       data: regs.map(r => { const it = (r.itens || []).find(x => x.codigo === cod); return it ? it.pct : null; }),
+    }));
+  } else if (tipo === "flocdisp") {
+    yTitle = "disponibilidade";
+    const regs = [...state.regFloc].sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    labels = regs.map(r => brDate(r.data));
+    const nomes = [...new Set(regs.flatMap(r => (r.itens || []).map(i => i.nome)))];
+    datasets = nomes.map((nm, i) => ({
+      label: nm, borderColor: cores[i % cores.length], backgroundColor: cores[i % cores.length],
+      tension: .3, borderWidth: 2, spanGaps: true,
+      data: regs.map(r => { const it = (r.itens || []).find(x => x.nome === nm); return it && it.disp != null ? it.disp : null; }),
     }));
   } else if (tipo === "bolas") {
     yTitle = "bags";
