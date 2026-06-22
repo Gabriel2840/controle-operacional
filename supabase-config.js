@@ -9,5 +9,5 @@
 //  A proteção real vem do LOGIN + das políticas RLS (veja supabase-setup.sql).
 //  Nunca cole aqui a chave "service_role" (essa é secreta).
 // =============================================================
-export const SUPABASE_URL = "https://SEU-PROJETO.supabase.co";
-export const SUPABASE_ANON_KEY = "COLE_AQUI_A_CHAVE_ANON_PUBLIC";
+export const SUPABASE_URL = "https://feoxwjsziizfnswqqelt.supabase.co";
+export const SUPABASE_ANON_KEY = "sb_publishable_-_jPrgTft2KHfuuAigX_Gw_3kxGR6C1";
