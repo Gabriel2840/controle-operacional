@@ -229,6 +229,40 @@ function del(tabela, id) {
 }
 window._del = (tabela, id, msg) => { if (confirm(msg || "Excluir este registro?")) del(tabela, id); };
 
+// ---------- Exportar Excel (.xlsx) ----------
+async function exportarExcel() {
+  try {
+    toast("Gerando Excel…");
+    const XLSX = await import("https://esm.sh/xlsx@0.18.5");
+    const wb = XLSX.utils.book_new();
+
+    const tanques = [];
+    state.regTanques.forEach(r => (r.itens || []).forEach(it =>
+      tanques.push({ Data: brDate(r.data), Tanque: it.codigo, Reagente: it.reagente, "Nível (%)": it.pct, Por: r.por })));
+    const bolas = [];
+    state.regBolas.forEach(r => (r.itens || []).forEach(it =>
+      bolas.push({ Data: brDate(r.data), Diâmetro: it.diametro, "Qtd bags": it.qtdBags, "Peso bag (kg)": it.peso ?? "", Por: r.por })));
+    const floc = [];
+    state.regFloc.forEach(r => (r.itens || []).forEach(it =>
+      floc.push({ Data: brDate(r.data), Floculante: it.nome, Consumo: it.qtd, Unidade: it.unidade, "Sacos disponíveis": it.disp ?? "", "Peso/saco (kg)": it.pesoSaco ?? "", Por: r.por })));
+    const glp = state.regGLP.map(r => ({ Data: brDate(r.data), "GLP (%)": r.pct, Por: r.por }));
+
+    const aba = (nome, rows) => XLSX.utils.book_append_sheet(
+      wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ Data: "(sem registros)" }]), nome);
+    aba("Tanques", tanques);
+    aba("Bolas", bolas);
+    aba("Floculante", floc);
+    aba("GLP", glp);
+
+    XLSX.writeFile(wb, `controle-operacional_${todayISO()}.xlsx`);
+    toast("Excel gerado ✓");
+  } catch (e) {
+    console.error("export", e);
+    toast("Não consegui gerar agora. Conecte-se à internet e tente de novo.", 4200);
+  }
+}
+window._export = exportarExcel;
+
 // ---------- Navegação ----------
 function route() { return (location.hash || "#/").slice(1) || "/"; }
 window.go = (r) => { location.hash = "#" + r; };
@@ -447,8 +481,9 @@ function viewHist() {
         : `${esc(it.nome)} ${it.qtd}${esc(it.unidade)}${it.disp != null ? ` (${it.disp} sacos)` : ""}`).join(" · ");
 
   screen().innerHTML = h + `<div class="card">
-    <div class="row" style="grid-template-columns:1fr auto">
+    <div class="row" style="grid-template-columns:1fr auto auto;align-items:center;gap:10px">
       <h2>Todos os registros (${all.length})</h2>
+      <button class="btn btn-teal btn-sm" onclick="_export()">⬇️ Exportar Excel</button>
       <select id="hf" style="max-width:180px">
         <option value="">Todos os tipos</option>
         <option>Tanques</option><option>Bolas</option><option>Floculante</option><option>GLP</option>

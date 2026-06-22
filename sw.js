@@ -1,6 +1,6 @@
 // Service worker — guarda o app shell para abrir mesmo sem internet.
 // Os DADOS ficam por conta do app (cache local em localStorage) e do Supabase.
-const CACHE = "controle-op-v2";
+const CACHE = "controle-op-v3";
 const LOCAL = [
   "./", "./index.html", "./app.js", "./supabase-config.js",
   "./manifest.webmanifest", "./icon.svg",
@@ -8,6 +8,7 @@ const LOCAL = [
 const LIBS = [
   "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js",
   "https://esm.sh/@supabase/supabase-js@2",
+  "https://esm.sh/xlsx@0.18.5",
 ];
 
 self.addEventListener("install", (e) => {
