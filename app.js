@@ -356,7 +356,7 @@ function viewFloc() {
         <td><b>${esc(f.nome)}</b></td>
         <td style="max-width:140px"><input type="number" min="0" step="0.01" id="f-q-${i}" placeholder="0"></td>
         <td style="max-width:110px"><select id="f-u-${i}">
-          ${["kg", "L", "m³", "UND"].map(u => `<option value="${u}"${f.unidade === u ? " selected" : ""}>${u}</option>`).join("")}
+          ${["KG", "L", "M³", "UND"].map(u => `<option value="${u}"${f.unidade === u ? " selected" : ""}>${u}</option>`).join("")}
         </select></td>
         <td style="max-width:140px"><input type="number" min="0" step="0.01" id="f-d-${i}" placeholder="0"></td></tr>`).join("")}
     </table>
