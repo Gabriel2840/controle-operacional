@@ -546,6 +546,7 @@ function drawChart(tipo) {
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { position: "top" } },
+      elements: { point: { radius: 4, hoverRadius: 7 }, line: { borderWidth: 2 } },
       scales: { y: { beginAtZero: true, title: { display: true, text: yTitle }, ...((tipo === "tanques" || tipo === "glp") ? { max: 100 } : {}) } },
     },
   });
