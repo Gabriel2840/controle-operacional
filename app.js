@@ -615,7 +615,7 @@ function viewCad() {
     <button class="btn btn-navy" id="c-tadd">Adicionar Tanque</button>
     <table style="margin-top:12px"><tr><th>Código</th><th>Reagente</th><th></th></tr>
       ${state.tanques.map(t => `<tr><td><b>${esc(t.codigo)}</b></td><td>${esc(t.reagente)}</td>
-        <td><button class="btn danger btn-sm" onclick="_del('cad_tanques','${t.id}','Excluir tanque ${esc(t.codigo)}?')">🗑</button></td></tr>`).join("")
+        <td><button class="btn danger btn-sm" onclick="_del('cad_tanques','${t.id}')">🗑</button></td></tr>`).join("")
         || '<tr><td colspan="3" class="muted center">Nenhum tanque.</td></tr>'}
     </table>
   </div>
@@ -629,7 +629,7 @@ function viewCad() {
     <p class="hint">Os diâmetros cadastrados viram sugestões na tela de Bolas.</p>
     <table style="margin-top:12px"><tr><th>Diâmetro</th><th>Descrição</th><th></th></tr>
       ${state.diametros.map(d => `<tr><td><b>${esc(d.valor)}</b></td><td>${esc(d.descricao || "")}</td>
-        <td><button class="btn danger btn-sm" onclick="_del('cad_diametros','${d.id}','Excluir diâmetro ${esc(d.valor)}?')">🗑</button></td></tr>`).join("")
+        <td><button class="btn danger btn-sm" onclick="_del('cad_diametros','${d.id}')">🗑</button></td></tr>`).join("")
         || '<tr><td colspan="3" class="muted center">Nenhum diâmetro.</td></tr>'}
     </table>
   </div>
@@ -649,7 +649,7 @@ function viewCad() {
     <table style="margin-top:12px"><tr><th>Nome</th><th>Unidade</th><th>Peso/saco</th><th></th></tr>
       ${state.floculantes.map(f => `<tr><td><b>${esc(f.nome)}</b></td><td>${esc(f.unidade)}</td>
         <td>${f.pesoSaco ? esc(f.pesoSaco) + " kg" : "—"}</td>
-        <td><button class="btn danger btn-sm" onclick="_del('cad_floculantes','${f.id}','Excluir floculante ${esc(f.nome)}?')">🗑</button></td></tr>`).join("")
+        <td><button class="btn danger btn-sm" onclick="_del('cad_floculantes','${f.id}')">🗑</button></td></tr>`).join("")
         || '<tr><td colspan="4" class="muted center">Nenhum floculante.</td></tr>'}
     </table>
   </div>`;
