@@ -1,6 +1,6 @@
 // Service worker — guarda o app shell para abrir mesmo sem internet.
 // Os DADOS ficam por conta do app (cache local em localStorage) e do Supabase.
-const CACHE = "controle-op-v3";
+const CACHE = "controle-op-v4";
 const LOCAL = [
   "./", "./index.html", "./app.js", "./supabase-config.js",
   "./manifest.webmanifest", "./icon.svg",

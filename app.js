@@ -78,6 +78,7 @@ function notifyNovo(tipo, n) {
 function setStatus(kind, text) { const b = $("status"); b.className = "status-bar " + kind; $("status-text").textContent = text; }
 function refreshStatus() {
   const pend = outboxGet().length;
+  const _btn = document.getElementById("btn-limpar"); if (_btn) _btn.classList.toggle("hidden", pend === 0);
   if (!navigator.onLine) return setStatus("offline", `Sem conexão — salvando no aparelho${pend ? ` (${pend} na fila)` : ""}; envia ao reconectar.`);
   if (pend) return setStatus("pending", `Conectado — enviando ${pend} pendência${pend > 1 ? "s" : ""}…`);
   setStatus("online", "Conectado e sincronizado.");
@@ -228,6 +229,14 @@ function del(tabela, id) {
   reRenderSeLeitura(); refreshStatus();
 }
 window._del = (tabela, id, msg) => { if (confirm(msg || "Excluir este registro?")) del(tabela, id); };
+
+window._limparFila = async () => {
+  if (!confirm("Limpar a fila de envios pendentes? Os dados já salvos no servidor serão recarregados.")) return;
+  outboxSet([]);
+  await sincronizar();
+  refreshStatus();
+  toast("Fila de pendências limpa ✓");
+};
 
 // ---------- Exportar Excel (.xlsx) ----------
 async function exportarExcel() {
